@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dicebound — Combat Test</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#13151b">
 <style>
 :root{--bg:#13151b;--panel:#1c2029;--panel2:#262b37;--ink:#eeece6;--muted:#9aa1ae;--line:#323949;
 --atk:#e0533d;--blk:#4f8fd6;--mag:#9b6cf0;--coin:#e2b23a;--good:#4fbf7a;--hp:#d9483b}
@@ -1752,6 +1754,11 @@ $('cineBrief').onchange=e=>{cineBrief=e.target.checked;try{localStorage.setItem(
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('cine').hidden){e.preventDefault();closeCinematic()}});
 
 initTown();renderTown();initCloud();
+</script>
+<script>
+if (location.protocol === 'https:' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Offline mode unavailable', error));
+}
 </script>
 </body>
 </html>
