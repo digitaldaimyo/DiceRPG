@@ -418,7 +418,7 @@ const POOLWORD={atk:'attack',blk:'block',mag:'magic',coin:'coin'};
 const SLOTS=[['j1','Ring'],['helm','Helmet'],['j2','Ring'],['rh','Right hand'],['chest','Chest'],['lh','Left hand'],['cape','Cape'],['legs','Legs'],['feet','Feet']];
 const SLOTNAME={j1:'Ring 1',j2:'Ring 2',ring:'Ring',helm:'Helmet',rh:'Right hand',chest:'Chest',lh:'Left hand',cape:'Cape',legs:'Legs',feet:'Feet'};
 const STATS=['STR','DEX','INT','VIT','LCK'];
-const STATDESC={STR:'+1 attack damage per 2 STR',DEX:'1 reroll per 3 DEX',INT:'+1 to each magic die per 2 INT',VIT:'+5 max HP, heal 1 per VIT after fights',LCK:'more heads on coins, d20 crits at 6 and 10'};
+const STATDESC={STR:'+1 attack damage per 2 STR',DEX:'1 reroll per 3 DEX',INT:'+1 magic damage per 2 INT',VIT:'+5 max HP, heal 1 per VIT after fights',LCK:'more heads on coins, d20 crits at 6 and 10'};
 const STATICON={STR:'💪',DEX:'🤸',INT:'🧠',VIT:'❤️',LCK:'🍀'};
 const RAR={s:{n:'Starter',c:'#7b8394'},c:{n:'Common',c:'#9aa1ae'},u:{n:'Uncommon',c:'#4fbf7a'},r:{n:'Rare',c:'#5b9be0'},e:{n:'Epic',c:'#a77cf5'},l:{n:'Legendary',c:'#f0a030'}};
 const RORDER=['c','u','r','e'];
@@ -551,7 +551,7 @@ const ENEMIES={
  cknight:{name:'Clockwork Knight',icon:'🦿',hp:110,elite:true,pattern:[{blk:[12,12]},{atk:[12,12]},{atk:[20],status:['vuln',2]}]},
  storm:{name:'Storm Engine',icon:'🌩️',hp:95,elite:true,pattern:[{atk:[8],status:['burn',5]},{atk:[12,12]},{blk:[20]}]},
  gearmind:{name:'The Gearmind',icon:'⚙️',hp:200,boss:true,mimic:true,pattern:[{atk:[12,12]},{blk:[12,8],status:['weak',2]},{atk:[20]},{atk:[6,6,6,6]}],
-  enrage:{at:.4,summon:['cogling','cogling'],pattern:[{atk:[20,12]},{atk:[12,12],status:['vuln',2]},{atk:[8,8,8],blk:[12]}]}},
+  enrage:{at:.4,summon:['cogling'],pattern:[{atk:[20,12]},{atk:[12,12],status:['vuln',2]},{atk:[8,8,8],blk:[12]}]}},
  rat:{name:'Crypt Rat',icon:'🐀',hp:16,pattern:[{atk:[6]},{atk:[4],status:['poison',2]},{atk:[6]}]},
  bat:{name:'Grave Bat',icon:'🦇',hp:13,pattern:[{atk:[4,4]},{atk:[6],status:['weak',1]}]},
  slime:{name:'Moss Slime',icon:'🟢',hp:24,pattern:[{blk:[6]},{atk:[6],status:['poison',1]},{atk:[4,4]}]},
@@ -572,7 +572,7 @@ const LEVELS=[
   early:[['pickpocket'],['eel'],['gull','gull'],['crab']],
   mid:[['pickpocket','eel'],['crab','gull'],['smuggler','pickpocket'],['gull','gull','eel'],['smuggler','crab'],['eel','eel'],['smuggler']],
   elite:[['barnacle'],['enforcer','gull'],['barnacle','pickpocket'],['enforcer']]},
- {name:'Clockwork Spire',short:'Spire',icon:'🗼',boss:'gearmind',intro:'d12 and d20 enemies. The Gearmind copies the keywords on your dice.',
+ {name:'Clockwork Spire',short:'Spire',icon:'🗼',boss:'gearmind',intro:'d12 and d20 enemies. The Gearmind copies the most common keyword on your dice.',
   early:[['cogling'],['wisp'],['imp'],['bolt']],
   mid:[['automaton'],['cogling','wisp'],['imp','bolt'],['cogling','cogling','wisp'],['automaton','cogling'],['wisp','imp'],['bolt','bolt']],
   elite:[['cknight'],['storm','cogling'],['cknight','wisp'],['storm']]}
@@ -811,13 +811,20 @@ function nextStep(){
 }
 
 /* ================= encounters ================= */
+/* difficulty knobs, in one place so balance passes can sweep them */
+/* tuned against a greedy test bot: about 45% wins with no town, about 85% with a full town */
+const TUNE={bossDmg:[1,.9,.8],dmgLv:[1.5,2.5,3.0],encDmg:.03,loopDmg:1,hp:1.55,lvHp:[1,1.3,1.45],bossHp:[1.1,1,.9],eliteHp:1,encHp:.08,basePow:0,encPow:1/3,lvPow:4,loopHp:1.35,loopPow:4};
 function genFight(t){
   const L=LV();const ids=t==='boss'?[L.boss]:rpick(t==='elite'?L.elite:run.enc<4?L.early:L.mid).slice();
   const loop=loopOf(),th=(run.level-1)%3;
   /* deeper loops: themes are lifted to Spire strength, then +35% HP, +4 damage and one die size per loop */
-  const lv=loop?[2.1,1.35,1][th]*1.45*Math.pow(1.35,loop):[1,1.3,1.45][run.level-1];
-  const boss=loop?[3,1.8,1][th]*Math.pow(1.35,loop):1;
-  return{ids,seed:1+Math.floor(rnd()*1e9),scale:(t==='boss'?boss:lv)*(1+0.08*run.enc),power:Math.floor((run.enc/3+(loop?8+4*loop:(run.level-1)*4))/ids.length),dstep:loop};
+  const K=TUNE,lvHp=K.lvHp[Math.min(2,run.level-1)];
+  const lv=loop?[2.1,1.35,1][th]*K.lvHp[2]*Math.pow(K.loopHp,loop):lvHp;
+  const boss=(loop?[3,1.8,1][th]*Math.pow(K.loopHp,loop):1)*K.bossHp[Math.min(2,run.level-1)];
+  const mul=(t==='boss'?boss:t==='elite'?lv*K.eliteHp:lv)*K.hp*(1+K.encHp*run.enc);
+  const pw=run.enc*K.encPow+(loop?K.lvPow*2+K.loopPow*loop:(run.level-1)*K.lvPow)+K.basePow;
+  const dmul=(t==='boss'?K.bossDmg[Math.min(2,run.level-1)]:1)*K.dmgLv[Math.min(2,run.level-1)]*(1+K.encDmg*run.enc)*Math.pow(K.loopDmg,loop);
+  return{ids,seed:1+Math.floor(rnd()*1e9),scale:mul,power:Math.floor(pw/ids.length),dstep:loop,dmul};
 }
 function eventAt(i){let k=0;for(let j=0;j<i;j++)if(run.map[j]==='event')k++;return run.events[((run.level-1)*2+k)%run.events.length]}
 function enterEncounter(){
@@ -980,7 +987,7 @@ const BUILDINGS=[
  {id:'yard',name:'Training Yard',icon:'🏋️',costs:[40,100,200],lv:['+1 starting stat point to place','+2 starting stat points','+3 starting stat points']},
  {id:'apoth',name:'Apothecary',icon:'🧪',costs:[40,100],lv:['Start with 2 potions','Potions heal 12 instead of 8']},
  {id:'shrine',name:'Shrine',icon:'⛩️',costs:[50,120,250],lv:['Start with 2 reroll tokens','Start with 3 reroll tokens','Start with 4 reroll tokens']},
- {id:'smith',name:'Blacksmith',icon:'⚒️',costs:[60,150,300],lv:['Choose your starting weapon: Rusty Sword, Twin Daggers or Hatchet','Adds the Apprentice Staff, and a Buckler replaces the Plank Shield','Your starting weapon begins honed one size']},
+ {id:'smith',name:'Blacksmith',icon:'⚒️',costs:[60,150,300],lv:['Choose your starting weapon: Rusty Sword, Hatchet or Apprentice Staff','Adds the Iron Sword, and a Buckler replaces the Plank Shield','Your starting weapon begins honed one size']},
  {id:'tailor',name:'Tailor',icon:'🧵',costs:[60,150],lv:['Backpack holds 5 items','Backpack holds 6 items']},
  {id:'watch',name:'Watchtower',icon:'🔭',costs:[70,180],lv:['The draft names the enemies of your next fight','The track also shows which events lie ahead']},
  {id:'tavern',name:'Tavern',icon:'🍺',costs:[80,200,400],lv:['Start with Thick Skin or Iron Will','Choose 1 of 3 starting traits, Rares included','Also start with 1 of 3 abilities']},
@@ -1096,7 +1103,7 @@ function renderPrep(){
   const optBtn=(on,attr,inner)=>`<button class="opt ${on?'on':''}" ${attr}>${inner}</button>`;
   if(town.stats.wins){h+=`<h3 class="ph">🚪 Mode</h3>`+optBtn(!p.endless,'data-mode="std"','⚔️ Standard run<small>Three levels. Beat the Gearmind to win.</small>')+optBtn(p.endless,'data-mode="end"','∞ Endless run<small>The same three levels, then the Spire keeps going: each deeper loop has tougher enemies and bigger dice, and pays 25% more gold. Beating the Gearmind still counts as a win.</small>')}
   if(BL('smith')){
-    const ws=['rusty','daggers','hatchet'].concat(BL('smith')>=2?['app_staff']:[]);
+    const ws=['rusty','hatchet','app_staff'].concat(BL('smith')>=2?['iron_sword']:[]);
     h+=`<h3 class="ph">⚒️ Starting weapon${BL('smith')>=3?' (honed one size)':''}</h3>`+ws.map(id=>{const g=G[id];return optBtn(p.weapon===id,`data-w="${id}"`,`${g.icon} ${g.name}<small>${diceText(g.dice,BL('smith')>=3?1:0)}${itemKwText(g)}</small>`)}).join('');
     if(BL('smith')>=2)h+=`<p class="sub">Your off hand starts with a Buckler (d6 block).</p>`;
   }
@@ -1157,6 +1164,8 @@ const alive=()=>S.enemies.filter(e=>e.hp>0);
 function tgt(){let t=S.enemies[S.target];if(!t||t.hp<=0){t=alive()[0];if(t)S.target=t.idx}return t}
 /* enemy bonus damage: level scaling, plus +1 per turn after turn 10 so fights cannot stall forever */
 const epow=e=>e.power+Math.max(0,S.turn-10);
+/* total flat bonus on an attack: power plus the level damage multiplier, shown as +N */
+const ebonus=(e,it)=>epow(e)+Math.round(sum((it&&it.atk||[]).map(s=>(s+1)/2))*((e.dmul||1)-1));
 const strB=()=>Math.floor(st('STR')/2);
 const intB=()=>Math.floor(st('INT')/2);
 const baseRerolls=()=>Math.max(1,Math.floor(st('DEX')/3))+(has('rhythm')?1:0)+runeCount('feet','haste');
@@ -1173,7 +1182,6 @@ function dv(d){
   let v=d.face;
   if(d.kw.includes('heavy')&&d.sides>2&&v<=2)v=3;
   v+=d.kw.filter(k=>k==='blessed').length;
-  if(d.pool==='mag')v+=intB();
   if(d.sides===20&&d.face>=critT())v*=2;
   return v;
 }
@@ -1213,6 +1221,7 @@ function poolTotal(p){
   if(ds.some(d=>d.kw.includes('twin'))){const c={};ds.forEach(d=>c[d.face]=(c[d.face]||0)+1);for(const f in c)twin+=Math.floor(c[f]/2)*Number(f)}
   return{base,twin,total:base+twin,n:ds.length};
 }
+function magDamage(){const m=poolTotal('mag');return m.n?m.total+intB():0}
 function coinBlock(){return sum(S.dice.filter(d=>d.pool==='coin'&&!d.spent&&d.face===2&&d.item.coin.type==='block').map(d=>d.item.coin.n))}
 function attackDamage(){
   const Hh=S.hero,E=tgt(),atk=poolTotal('atk');
@@ -1245,7 +1254,7 @@ function renderLanes(){
     if(rolled){
       const t=poolTotal(p);tot=t.total;
       if(p==='atk'&&t.n&&strB()){tot+=strB();sub=`+${strB()} STR`}
-      if(p==='mag'&&t.n&&intB())sub=`+${intB()} INT/die`;
+      if(p==='mag'&&t.n&&intB()){tot+=intB();sub=`+${intB()} INT`}
       if(p==='blk'){const cb=coinBlock();if(cb){tot+=cb;sub=`+${cb} coin`}}
       if(t.twin)sub+=(sub?'<br>':'')+`+${t.twin} twin`;
       if(p==='coin'){const c=S.dice.filter(d=>d.pool==='coin'&&!d.spent);tot=`${c.filter(d=>d.face===2).length}/${c.length}`;sub='heads'}
@@ -1350,9 +1359,9 @@ function applyStatus(t,k,n){
 function heal(t,n,from){const before=t.hp;t.hp=Math.min(t.maxHp,t.hp+n);const g=t.hp-before;pop(from||elFor(t),`+${g} HP`,'#6fe39a');if(g)log(`${who(t)} heal${t===S.hero?'':'s'} ${g}`);renderAll()}
 
 const blankSt=()=>({poison:0,burn:0,weak:0,vuln:0,stun:0,ward:0});
-function makeEnemy(id,idx,hpMul,power,dstep=0){
+function makeEnemy(id,idx,hpMul,power,dstep=0,dmul=1){
   const e=ENEMIES[id];const hp=Math.max(5,Math.round(e.hp*hpMul));const pat=stepPat(e.pattern,dstep);
-  return{idx,id,def:e,power,dstep,name:e.name,icon:e.icon,maxHp:hp,hp,block:0,st:blankSt(),pattern:pat,step:idx%pat.length,enraged:false,intent:pat[idx%pat.length],dead:false};
+  return{idx,id,def:e,power,dstep,dmul,name:e.name,icon:e.icon,maxHp:hp,hp,block:0,st:blankSt(),pattern:pat,step:idx%pat.length,enraged:false,intent:pat[idx%pat.length],dead:false};
 }
 function nameDuplicates(){
   const c={};S.enemies.forEach(e=>c[e.def.name]=(c[e.def.name]||0)+1);
@@ -1365,7 +1374,7 @@ function startCombat(){
   rng=mulberry32(f.seed);
   S={turn:0,phase:'busy',over:false,dice:[],rerolls:0,ready:{},potionUsed:false,selected:null,fbUsed:false,target:0,
     hero:{name:'You',stats,maxHp:20+5*stats.VIT,hp:h.hp,block:0,st:blankSt(),items:h.items,runes:h.runes,traits:h.traits,abilities:h.abilities.map(k=>({...ABIL[k],key:k})),potions:h.potions,potHeal:h.potHeal||8},
-    enemies:ids.map((id,i)=>makeEnemy(id,i,f.scale*groupMul(ids.length),f.power||0,f.dstep||0))};
+    enemies:ids.map((id,i)=>makeEnemy(id,i,f.scale*groupMul(ids.length),f.power||0,f.dstep||0,f.dmul||1))};
   nameDuplicates();
   S.lanes=POOLS.filter(p=>heroSpecs().some(d=>d.pool===p));
   $('diceLayer').innerHTML='';$('enemyDice').innerHTML=`<span class="lbl">${ids.length>1?'Tap an enemy to target it. ':''}Enemy dice land here.</span>`;$('log').innerHTML='';$('fx').innerHTML='';hintOverride=null;
@@ -1375,7 +1384,7 @@ function startCombat(){
 }
 async function summon(ids,boss){
   const room=3-S.enemies.length;if(room<=0)return;
-  ids.slice(0,room).forEach(id=>{S.enemies.push(makeEnemy(id,S.enemies.length,run.fight.scale*.6,boss.power,boss.dstep))});
+  ids.slice(0,room).forEach(id=>{S.enemies.push(makeEnemy(id,S.enemies.length,run.fight.scale*.6,boss.power,boss.dstep,boss.dmul))});
   nameDuplicates();buildEnemyCards();renderAll();
   S.enemies.slice(-Math.min(room,ids.length)).forEach(e=>{const el=$('ec-'+e.idx);el.animate([{transform:'translateY(-30px) scale(.6)',opacity:0},{transform:'none',opacity:1}],{duration:T(450)||1,easing:'ease-out'})});
   log(`${boss.name} summons ${ids.slice(0,room).map(id=>ENEMIES[id].name).join(' and ')}`);
@@ -1400,7 +1409,7 @@ async function rollHero(){
   layout(false);renderLanes();
   await spill(S.dice);
   for(const d of[...S.dice]){if(S.dice.includes(d))await landing(d);if(S.over)return}
-  S.mimicKw=[...new Set(S.dice.flatMap(d=>d.kw))].filter(k=>['heavy','blessed','exploding'].includes(k));
+  {/* the Gearmind copies your single most common copyable keyword */const c={};S.dice.forEach(d=>[...new Set(d.kw)].forEach(k=>{if(['heavy','blessed','exploding'].includes(k))c[k]=(c[k]||0)+1}));const top=Object.keys(c).sort((a,b)=>c[b]-c[a])[0];S.mimicKw=top?[top]:[]}
   await thieves();
   layout();update();
 }
@@ -1527,7 +1536,7 @@ async function endTurn(){
     if(has('leech')&&dealt>=6)heal(Hh,Math.floor(dealt/6));
   }
   for(const v of splash){const o=alive().find(e=>e!==E)||alive()[0];if(!o)break;pop(elFor(o),'✺ Splash','#ffd36b');await dealDamage(o,v,{quick:true});if(S.over)return}
-  if(mag.total>0){await dealDamage(tgt(),mag.total,{pierce:true,tag:'magic'});if(S.over)return}
+  const md=magDamage();if(md>0){await dealDamage(tgt(),md,{pierce:true,tag:'magic'});if(S.over)return}
   if(Hh.st.burn){await dealDamage(Hh,Hh.st.burn,{pierce:true,tag:'burn',noVuln:true});Hh.st.burn--;renderAll();if(S.over)return}
   if(Hh.st.weak)Hh.st.weak--;if(Hh.st.vuln)Hh.st.vuln--;
   renderAll();await sleep(T(300));
@@ -1550,7 +1559,7 @@ async function enemyAct(E){
   if(mk.length){$('enemyDice').innerHTML+=`<span class="lbl">copies ${mk.map(k=>KW[k].g+' '+KW[k].n).join(', ')}</span>`;pop(elFor(E),'Mimic!','#c9adff')}
   const atkF=it.atk?await enemyRoll(E,it.atk,'eatk',mk):[];
   if(blkF.length){const b=sum(blkF);E.block+=b;pop(elFor(E),`+${b} block`,'#8fbcf0');log(`${E.name} blocks ${b}`);renderAll();await sleep(T(220))}
-  if(atkF.length){let dmg=sum(atkF)+epow(E);if(E.st.weak)dmg=Math.floor(dmg*.75);
+  if(atkF.length){let dmg=sum(atkF)+ebonus(E,it);if(E.st.weak)dmg=Math.floor(dmg*.75);
     $('eic-'+E.idx).animate([{transform:'none'},{transform:'translateY(16px) scale(1.2)'},{transform:'none'}],{duration:T(260)||1});
     await dealDamage(Hh,dmg);if(S.over)return}
   if(it.status){applyStatus(Hh,it.status[0],it.status[1]);await sleep(T(280))}
@@ -1583,7 +1592,7 @@ function finish(win){
   S.over=true;S.phase='over';update();
   log(win?`Victory in ${S.turn} turns`:`Defeated on turn ${S.turn}`);
   sfx(win?'victory':'defeat');if(win)pop($('enemyRow'),'Victory!','#ffd34d',true);
-  const f=S;setTimeout(()=>{if(S===f)combatOver(win)},win?1100:900);
+  const f=S;setTimeout(()=>{if(S===f)combatOver(win)},T(win?1100:900));
 }
 
 /* combat rendering */
@@ -1612,7 +1621,7 @@ function statusChips(t){
 function intentHTML(E){
   if(E.hp<=0)return '<span class="muted">defeated</span>';
   if(E.st.stun)return '<span style="color:#fff">✦ stunned</span>';
-  const it=E.intent,parts=[],p=epow(E);
+  const it=E.intent,parts=[],p=ebonus(E,it);
   if(it.atk)parts.push(`⚔ ${fmtDice(it.atk)}${p?'+'+p:''}`);
   if(it.blk)parts.push(`🛡 ${fmtDice(it.blk)}`);
   if(it.status)parts.push(`<span style="color:${STI[it.status[0]].c}">${STI[it.status[0]].i} ${STI[it.status[0]].n} ${it.status[1]}</span>`);
@@ -1635,7 +1644,7 @@ function renderAll(){
   $('heroStatus').innerHTML=statusChips(Hh);
   const s=Hh.stats;
   $('heroStats').innerHTML=`${STATS.map(k=>`<span class="n"><b>${k}</b> ${s[k]}</span>`).join(' ')}<br>
-   <span class="d">+${strB()} dmg · ${baseRerolls()} reroll${baseRerolls()>1?'s':''} · +${intB()} magic/die<br>keep ${carry()===Infinity?'all':carry()} block · heads ${Math.round(headsP()*100)}% · d20 crit ${critT()}+</span>`;
+   <span class="d">+${strB()} dmg · ${baseRerolls()} reroll${baseRerolls()>1?'s':''} · +${intB()} magic<br>keep ${carry()===Infinity?'all':carry()} block · heads ${Math.round(headsP()*100)}% · d20 crit ${critT()}+</span>`;
   renderLanes();update();
   if(run)$('rbHp').textContent=`${Hh.hp}/${Hh.maxHp}`;
 }
@@ -1657,9 +1666,9 @@ function update(){
     const hit=Math.max(0,v(dmg)-E.block),bl=Math.min(E.block,v(dmg));
     const parts=[];
     if(dmg)parts.push(`Attack hits ${S.enemies.length>1?E.name+' ':''}for <b>${hit}</b>${bl?` (${bl} blocked)`:''}`);
-    if(mag.total)parts.push(`magic <b>${v(mag.total)}</b>`);
+    if(magDamage())parts.push(`magic <b>${v(magDamage())}</b>`);
     const myBlock=Hh.block+blk.total+cb;
-    const inc=alive().filter(e=>!e.st.stun&&e.intent.atk).map(e=>{const p=epow(e);return fmtDice(e.intent.atk)+(p?'+'+p:'')});
+    const inc=alive().filter(e=>!e.st.stun&&e.intent.atk).map(e=>{const p=ebonus(e,e.intent);return fmtDice(e.intent.atk)+(p?'+'+p:'')});
     $('preview').innerHTML=`${parts.join(' + ')||'No damage this turn'}.<br>You block <b>${myBlock}</b> against ${inc.length?inc.join(', '):'no attacks'}.`;
   }else $('preview').innerHTML=S.over?'':'<span style="color:var(--muted)">'+(S.turn?'Enemy turn…':'')+'</span>';
   if(!hintOverride){
